@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"log/slog"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -12,7 +13,7 @@ import (
 )
 
 func TestBashExecLs(t *testing.T) {
-	cmd := exec.Command("ls", "-la")
+	cmd := exec.Command("/bin/sh", "-c", "ls", "-la")
 	bt := New("mock_task", cmd)
 	var logs bytes.Buffer
 	tc := dag.TaskContext{Logger: jsonLoggerToBufio(&logs, slog.LevelInfo)}
@@ -31,20 +32,72 @@ func TestBashExecLs(t *testing.T) {
 		t.Errorf("Expected 3 log lines, got: %d", len(llMaps))
 	}
 
-	// Expecting stdout with "bash_test.go" file
-	stdoutMsg, ok := llMaps[2]["stdout"]
-	if !ok {
-		t.Errorf("Expected <msg> key to be in JSON log line: %v", llMaps[2])
+	testStdoutContains(llMaps, "bash_test.go", t)
+}
+
+func TestBashWriteIntoFile(t *testing.T) {
+	const fileName = "tmp.tmp"
+	cmd1 := exec.Command("/bin/sh", "-c", "echo 'hello' > "+fileName)
+	cmd2 := exec.Command("/bin/sh", "-c", "ls", "-la")
+	cmd3 := exec.Command("/bin/sh", "-c", "rm "+fileName)
+	bashWrite := New("write", cmd1)
+	bashList := New("list", cmd2)
+	bashRemove := New("remove", cmd3)
+
+	var logs bytes.Buffer
+	tc := dag.TaskContext{Logger: jsonLoggerToBufio(&logs, slog.LevelInfo)}
+
+	wErr := bashWrite.Execute(tc)
+	if wErr != nil {
+		t.Errorf("Executing bash cmd %s failed: %s", cmd1.String(),
+			wErr.Error())
 	}
-	stdoutMsgStr, castOk := stdoutMsg.(string)
-	if !castOk {
-		t.Errorf("Expected value for key 'msg', to be string, but it's not: %+v",
-			stdoutMsg)
+
+	lsErr := bashList.Execute(tc)
+	if lsErr != nil {
+		t.Errorf("Executing bash cmd %s failed: %s", cmd2.String(),
+			lsErr.Error())
 	}
-	if !strings.Contains(stdoutMsgStr, "bash_test.go") {
-		t.Errorf("Expected <bash_test.go>, to be listed by <ls -la> command. Got: %s",
-			stdoutMsgStr)
+	fInfo, fErr := os.Stat(fileName)
+	if os.IsNotExist(fErr) {
+		t.Errorf("Expected file %s to exists, but it does not", fileName)
 	}
+	if fInfo.Size() == 0 {
+		t.Error("Expected non-empty file")
+	}
+
+	rErr := bashRemove.Execute(tc)
+	if rErr != nil {
+		t.Errorf("Executing bash cmd %s failed: %s", cmd3.String(),
+			rErr.Error())
+	}
+
+	// checking for stdout "tmp.tmp" from ls command
+	llMaps, llErr := logLineMaps(&logs)
+	if llErr != nil {
+		t.Errorf("Cannot parse log lines: %s", llErr.Error())
+	}
+	testStdoutContains(llMaps, fileName, t)
+}
+
+func testStdoutContains(llMaps []map[string]any, phrase string, t *testing.T) {
+	t.Helper()
+
+	for _, logLineMap := range llMaps {
+		stdoutMsg, ok := logLineMap["stdout"]
+		if !ok {
+			continue
+		}
+		stdoutMsgStr, castOk := stdoutMsg.(string)
+		if !castOk {
+			continue
+		}
+		if strings.Contains(stdoutMsgStr, phrase) {
+			// found it!
+			return
+		}
+	}
+	t.Errorf("Phrase <%s> not found in stdout", phrase)
 }
 
 func jsonLoggerToBufio(b *bytes.Buffer, lvl slog.Level) *slog.Logger {
