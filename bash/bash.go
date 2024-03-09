@@ -23,6 +23,9 @@ func NewBash(taskId string, bashCmd *exec.Cmd) *Bash {
 	}
 }
 
+// Id returns task identifier.
+func (b *Bash) Id() string { return b.taskId }
+
 // Execute executes bash command and redirect stdout and stderr to the logger.
 func (b *Bash) Execute(tc dag.TaskContext) error {
 	tc.Logger.Info("Start executing bash command", "cmd", b.cmd.String(),
