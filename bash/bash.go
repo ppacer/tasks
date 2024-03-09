@@ -15,8 +15,8 @@ type Bash struct {
 	cmd    *exec.Cmd
 }
 
-// NewBash instantiate new ppacer bash Task.
-func NewBash(taskId string, bashCmd *exec.Cmd) *Bash {
+// New instantiate new ppacer bash Task.
+func New(taskId string, bashCmd *exec.Cmd) *Bash {
 	return &Bash{
 		taskId: taskId,
 		cmd:    bashCmd,

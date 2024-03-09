@@ -13,7 +13,7 @@ import (
 
 func TestBashExecLs(t *testing.T) {
 	cmd := exec.Command("ls", "-la")
-	bt := NewBash("mock_task", cmd)
+	bt := New("mock_task", cmd)
 	var logs bytes.Buffer
 	tc := dag.TaskContext{Logger: jsonLoggerToBufio(&logs, slog.LevelInfo)}
 
