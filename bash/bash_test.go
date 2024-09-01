@@ -13,14 +13,16 @@ import (
 )
 
 func TestBashExecLs(t *testing.T) {
-	cmd := exec.Command("/bin/sh", "-c", "ls", "-la")
-	bt := New("mock_task", cmd)
+	cmdFunc := func() *exec.Cmd {
+		return exec.Command("/bin/sh", "-c", "ls", "-la")
+	}
+	bt := New("mock_task", cmdFunc)
 	var logs bytes.Buffer
 	tc := dag.TaskContext{Logger: jsonLoggerToBufio(&logs, slog.LevelInfo)}
 
 	execErr := bt.Execute(tc)
 	if execErr != nil {
-		t.Errorf("Executing bash cmd %s failed: %s", cmd.String(),
+		t.Errorf("Executing bash cmd %s failed: %s", cmdFunc().String(),
 			execErr.Error())
 	}
 
@@ -35,27 +37,53 @@ func TestBashExecLs(t *testing.T) {
 	testStdoutContains(llMaps, "bash_test.go", t)
 }
 
+func TestBashExecLsTwice(t *testing.T) {
+	cmdFunc := func() *exec.Cmd {
+		return exec.Command("/bin/sh", "-c", "ls", "-la")
+	}
+	bt := New("mock_task", cmdFunc)
+	var logs bytes.Buffer
+	tc := dag.TaskContext{Logger: jsonLoggerToBufio(&logs, slog.LevelInfo)}
+
+	execErr := bt.Execute(tc)
+	if execErr != nil {
+		t.Errorf("Executing bash cmd %s failed: %s", cmdFunc().String(),
+			execErr.Error())
+	}
+	execErr2 := bt.Execute(tc)
+	if execErr2 != nil {
+		t.Errorf("Executing bash cmd %s for the second time failed: %s",
+			cmdFunc().String(), execErr2.Error())
+	}
+}
+
 func TestBashWriteIntoFile(t *testing.T) {
 	const fileName = "tmp.tmp"
-	cmd1 := exec.Command("/bin/sh", "-c", "echo 'hello' > "+fileName)
-	cmd2 := exec.Command("/bin/sh", "-c", "ls", "-la")
-	cmd3 := exec.Command("/bin/sh", "-c", "rm "+fileName)
-	bashWrite := New("write", cmd1)
-	bashList := New("list", cmd2)
-	bashRemove := New("remove", cmd3)
+	cmdF1 := func() *exec.Cmd {
+		return exec.Command("/bin/sh", "-c", "echo 'hello' > "+fileName)
+	}
+	cmdF2 := func() *exec.Cmd {
+		return exec.Command("/bin/sh", "-c", "ls", "-la")
+	}
+	cmdF3 := func() *exec.Cmd {
+		return exec.Command("/bin/sh", "-c", "rm "+fileName)
+	}
+	bashWrite := New("write", cmdF1)
+	bashList := New("list", cmdF2)
+	bashRemove := New("remove", cmdF3)
 
 	var logs bytes.Buffer
 	tc := dag.TaskContext{Logger: jsonLoggerToBufio(&logs, slog.LevelInfo)}
 
 	wErr := bashWrite.Execute(tc)
 	if wErr != nil {
-		t.Errorf("Executing bash cmd %s failed: %s", cmd1.String(),
+		t.Errorf("Executing bash cmd %s failed: %s", cmdF1().String(),
 			wErr.Error())
 	}
 
 	lsErr := bashList.Execute(tc)
 	if lsErr != nil {
-		t.Errorf("Executing bash cmd %s failed: %s", cmd2.String(),
+		t.Errorf("Executing bash cmd %s failed: %s", cmdF2().String(),
 			lsErr.Error())
 	}
 	fInfo, fErr := os.Stat(fileName)
@@ -68,7 +96,7 @@ func TestBashWriteIntoFile(t *testing.T) {
 
 	rErr := bashRemove.Execute(tc)
 	if rErr != nil {
-		t.Errorf("Executing bash cmd %s failed: %s", cmd3.String(),
+		t.Errorf("Executing bash cmd %s failed: %s", cmdF3().String(),
 			rErr.Error())
 	}
 

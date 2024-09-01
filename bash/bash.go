@@ -11,15 +11,17 @@ import (
 // Bash represents ppacer Task for executing bash commands. Both stdout and
 // stderr streams are redirect to the task logger.
 type Bash struct {
-	taskId string
-	cmd    *exec.Cmd
+	taskId  string
+	cmdFunc func() *exec.Cmd
+	env     []string
 }
 
 // New instantiate new ppacer bash Task.
-func New(taskId string, bashCmd *exec.Cmd) *Bash {
+func New(taskId string, cmdFunc func() *exec.Cmd, env ...string) *Bash {
 	return &Bash{
-		taskId: taskId,
-		cmd:    bashCmd,
+		taskId:  taskId,
+		cmdFunc: cmdFunc,
+		env:     env,
 	}
 }
 
@@ -28,16 +30,19 @@ func (b *Bash) Id() string { return b.taskId }
 
 // Execute executes bash command and redirect stdout and stderr to the logger.
 func (b *Bash) Execute(tc dag.TaskContext) error {
-	tc.Logger.Info("Start executing bash command", "cmd", b.cmd.String(),
-		"env", b.cmd.Env)
+	cmd := b.cmdFunc()
+	cmd.Env = b.env
+
+	tc.Logger.Info("Start executing bash command", "cmd", cmd.String(),
+		"env", cmd.Env)
 	start := time.Now()
 
 	// TODO(dskrzypiec): Think about limiting stdout.
 	var stdout, stderr bytes.Buffer
-	b.cmd.Stdout = &stdout
-	b.cmd.Stderr = &stderr
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
-	runErr := b.cmd.Run()
+	runErr := cmd.Run()
 	if runErr != nil {
 		tc.Logger.Error("Bash command has failed", "duration",
 			time.Since(start), "stderr", stderr.String())
